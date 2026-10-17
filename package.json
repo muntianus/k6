@@ -1,0 +1,16 @@
+{
+  "name": "perfops-k6-runner",
+  "version": "1.0.0",
+  "description": "PerfOps k6 Telemetry Collector, Run Registry & LaunchGate Bridge Service",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test tests/k6-runner.test.js",
+    "smoke": "k6 run --vus 1 --duration 10s index.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}
