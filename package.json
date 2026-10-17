@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test tests/k6-runner.test.js",
-    "smoke": "k6 run --vus 1 --duration 10s index.js"
+    "smoke": "k6 run script.js"
   },
   "engines": {
     "node": ">=20.0.0"
