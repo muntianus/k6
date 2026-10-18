@@ -192,3 +192,26 @@ test('src/server.js: HTTP API /health, /api/v1/runs/ingest, /api/v1/runs, and /a
     await new Promise((resolve) => mockTarget.close(resolve));
   }
 });
+
+
+test('SLO gate fails closed on missing or invalid metrics', () => {
+  const incomplete = buildLaunchGateEvaluation({ telemetry: { p95: 1, p99: 2 } });
+  assert.equal(incomplete.sloPassed, false);
+  assert.equal(incomplete.launchGateRequest.gateVerdict, 'BLOCK');
+  assert.ok(incomplete.violations.some((v) => v.includes('rps')));
+
+  const invalid = buildLaunchGateEvaluation({
+    telemetry: { p50: 1, p90: 1, p95: NaN, p99: 1, rps: 1, error_rate: 0, total_requests: 10 },
+  });
+  assert.equal(invalid.badge, 'FAIL');
+  assert.ok(invalid.violations.some((v) => v.includes('p95')));
+});
+
+test('SLO gate applies configured min_rps threshold', () => {
+  const lowThroughput = buildLaunchGateEvaluation({
+    telemetry: { p50: 1, p90: 1, p95: 1, p99: 1, rps: 0.1, error_rate: 0, total_requests: 5 },
+    thresholds: { min_rps: 1 },
+  });
+  assert.equal(lowThroughput.badge, 'FAIL');
+  assert.match(lowThroughput.violations.join(' '), /minimum 1/);
+});
