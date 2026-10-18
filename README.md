@@ -25,3 +25,9 @@ npm start
 - `POST /api/v1/runs/ingest` — Ingests a k6 `--summary-export` JSON payload, extracts `p50`, `p90`, `p95`, `p99`, `rps`, `error_rate`, evaluates SLO thresholds, and formats a `launchgate.v1` evaluation request.
 - `GET /api/v1/runs` — Lists historical k6 runs with SLO `PASS` / `FAIL` badges (supports `?service=` and `?badge=` filters).
 - `POST /api/v1/runs/synthetic-benchmark` — Executes a lightweight concurrent HTTP benchmark against a target URL (default `https://api.globlex.pro/health`), returns k6-compatible summary JSON, and registers the run.
+
+## Contact / Support
+
+PerfOps official Telegram contact: [@perfops_ai_manager](https://t.me/perfops_ai_manager).
+
+For security vulnerabilities, use private vulnerability reporting rather than public Telegram messages.
