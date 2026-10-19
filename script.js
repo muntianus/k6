@@ -57,7 +57,9 @@ export default function () {
         redirects: target.redirects ?? 10,
         // Caddy may normalize a trailing slash before the final contract response.
         // The check below still verifies the final status for each endpoint.
-        responseCallback: http.expectedStatuses(target.expectedStatus, 301, 302, 307, 308),
+        // 401 is an intended contract for auth-gated endpoints; without it
+        // those routes would be counted in http_req_failed and fail the gate.
+        responseCallback: http.expectedStatuses(target.expectedStatus, 301, 302, 307, 308, 401),
         tags: { endpoint: target.name },
         timeout: '10s',
       });
