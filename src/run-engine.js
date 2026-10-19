@@ -1,12 +1,7 @@
 import crypto from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-
-export const DEFAULT_SLO_THRESHOLDS = Object.freeze({
-  p95_ms: 450,
-  p99_ms: 900,
-  error_rate: 0.01,
-  min_rps: 0.5,
-});
+import { buildLaunchGateEvaluation } from './slo-evaluator.js';
+export { DEFAULT_SLO_THRESHOLDS, buildLaunchGateEvaluation } from './slo-evaluator.js';
 
 function roundMetric(val, decimals = 2) {
   const num = Number(val);
@@ -88,64 +83,6 @@ export function extractK6Telemetry(summaryPayload = {}) {
     rps,
     error_rate: errorRate,
     total_requests: totalRequests,
-  };
-}
-
-/**
- * Evaluates extracted k6 telemetry against SLO thresholds and builds a LaunchGate evaluation request.
- *
- * @param {object} params
- * @param {string} [params.service='globlex-api']
- * @param {string} [params.environment='production']
- * @param {string} [params.scenario='default']
- * @param {ReturnType<typeof extractK6Telemetry>} params.telemetry
- * @param {Partial<typeof DEFAULT_SLO_THRESHOLDS>} [params.thresholds]
- */
-export function buildLaunchGateEvaluation({
-  service = 'globlex-api',
-  environment = 'production',
-  scenario = 'default',
-  telemetry,
-  thresholds = {},
-}) {
-  const slo = { ...DEFAULT_SLO_THRESHOLDS, ...thresholds };
-
-  const violations = [];
-  if (telemetry.p95 > slo.p95_ms) {
-    violations.push(`p95 latency ${telemetry.p95}ms exceeds threshold ${slo.p95_ms}ms`);
-  }
-  if (telemetry.p99 > slo.p99_ms) {
-    violations.push(`p99 latency ${telemetry.p99}ms exceeds threshold ${slo.p99_ms}ms`);
-  }
-  if (telemetry.error_rate > slo.error_rate) {
-    violations.push(`error_rate ${telemetry.error_rate} exceeds threshold ${slo.error_rate}`);
-  }
-
-  const passed = violations.length === 0;
-  const badge = passed ? 'PASS' : 'FAIL';
-
-  return {
-    sloPassed: passed,
-    badge,
-    violations,
-    launchGateRequest: {
-      schemaVersion: 'launchgate.v1',
-      service,
-      environment,
-      scenario,
-      gateVerdict: passed ? 'ALLOW' : 'BLOCK',
-      metrics: {
-        latency_p50_ms: telemetry.p50,
-        latency_p90_ms: telemetry.p90,
-        latency_p95_ms: telemetry.p95,
-        latency_p99_ms: telemetry.p99,
-        rps: telemetry.rps,
-        error_rate: telemetry.error_rate,
-        total_requests: telemetry.total_requests,
-      },
-      thresholds: slo,
-      violations,
-    },
   };
 }
 
