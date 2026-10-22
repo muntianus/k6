@@ -39,6 +39,50 @@ function readJsonBody(req, maxBytes = 2 * 1024 * 1024) {
   });
 }
 
+/**
+ * Hosts the unauthenticated benchmark endpoint may send traffic to. Anything else
+ * (internal addresses, metadata endpoints, other sites) is refused, so the
+ * endpoint cannot be used as an SSRF / port-scanning proxy. Override with
+ * K6_BENCHMARK_ALLOWED_HOSTS (comma-separated hostnames, exact match).
+ */
+export const DEFAULT_BENCHMARK_HOSTS = [
+  'api.globlex.pro',
+  'globlex.pro',
+  'globlex.shop',
+  'globlex.online',
+  'perfops.tech',
+  'app.perfops.tech',
+  'perfops.shop',
+  'aco.perfops.shop',
+  'perfops.ai',
+];
+
+export function parseAllowedHosts(raw) {
+  const hosts = String(raw || '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  return hosts.length ? hosts : DEFAULT_BENCHMARK_HOSTS;
+}
+
+function assertBenchmarkTarget(rawUrl, allowedHosts) {
+  let target;
+  try {
+    target = new URL(rawUrl);
+  } catch {
+    target = null;
+  }
+  if (!target || (target.protocol !== 'http:' && target.protocol !== 'https:')) {
+    throw Object.assign(new Error('targetUrl must be an absolute http(s) URL'), { statusCode: 400 });
+  }
+  if (!allowedHosts.includes(target.hostname.toLowerCase())) {
+    throw Object.assign(
+      new Error(`targetUrl host ${target.hostname} is not allowed (K6_BENCHMARK_ALLOWED_HOSTS)`),
+      { statusCode: 403 },
+    );
+  }
+}
+
 function health(req, res) {
   return sendJson(res, 200, {
     status: 'ok',
@@ -69,11 +113,13 @@ async function ingestRun(req, res, url, { registry }) {
   }
 }
 
-async function syntheticBenchmark(req, res, url, { registry, fetchImpl }) {
+async function syntheticBenchmark(req, res, url, { registry, fetchImpl, allowedHosts }) {
   try {
     const body = await readJsonBody(req);
+    const targetUrl = body.targetUrl || 'https://api.globlex.pro/health';
+    assertBenchmarkTarget(targetUrl, allowedHosts);
     const bench = await executeSyntheticBenchmark({
-      targetUrl: body.targetUrl || 'https://api.globlex.pro/health',
+      targetUrl,
       iterations: body.iterations ?? 5,
       concurrency: body.concurrency ?? 2,
       timeoutMs: body.timeoutMs ?? 4000,
@@ -106,7 +152,7 @@ async function syntheticBenchmark(req, res, url, { registry, fetchImpl }) {
 
 /**
  * Every route the service answers. Handlers get `(req, res, url, ctx)` where
- * ctx = { registry, fetchImpl }. tests/openapi-contract.test.js keeps this
+ * ctx = { registry, fetchImpl, allowedHosts }. tests/openapi-contract.test.js keeps this
  * table and docs/api/openapi.json in lockstep.
  */
 export const ROUTES = [
@@ -118,11 +164,15 @@ export const ROUTES = [
 
 /**
  * Creates the PerfOps k6 Telemetry Collector, Run Registry & LaunchGate Bridge HTTP server.
- * @param {{ registry?: K6RunRegistry, fetchImpl?: typeof globalThis.fetch }} [deps]
+ * @param {{ registry?: K6RunRegistry, fetchImpl?: typeof globalThis.fetch, allowedHosts?: string[] }} [deps]
  * @returns {import('node:http').Server}
  */
 export function createServer(deps = {}) {
-  const ctx = { registry: deps.registry || new K6RunRegistry(), fetchImpl: deps.fetchImpl };
+  const ctx = {
+    registry: deps.registry || new K6RunRegistry(),
+    fetchImpl: deps.fetchImpl,
+    allowedHosts: deps.allowedHosts || parseAllowedHosts(process.env.K6_BENCHMARK_ALLOWED_HOSTS),
+  };
 
   return http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
