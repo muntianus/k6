@@ -1,0 +1,514 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PerfOps k6 Telemetry Collector",
+    "version": "1.0.0",
+    "description": "k6 summary ingestion, SLO run registry, synthetic HTTP benchmark and LaunchGate request builder."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:4041",
+      "description": "Local / VPS loopback"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Liveness probe (no dependencies)",
+        "tags": [
+          "ops"
+        ],
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs": {
+      "get": {
+        "operationId": "listRuns",
+        "summary": "List ingested runs, newest first (in-memory, last 200)",
+        "tags": [
+          "runs"
+        ],
+        "parameters": [
+          {
+            "name": "service",
+            "in": "query",
+            "required": false,
+            "description": "Only runs for this service",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "badge",
+            "in": "query",
+            "required": false,
+            "description": "Only runs with this verdict badge (case-insensitive)",
+            "schema": {
+              "type": "string",
+              "examples": [
+                "PASS",
+                "WARN",
+                "FAIL"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "count",
+                    "runs"
+                  ],
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RunRecord"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/ingest": {
+      "post": {
+        "operationId": "ingestRun",
+        "summary": "Ingest a k6 summary, evaluate SLOs and store the run",
+        "tags": [
+          "runs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/IngestRequest"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "metrics"
+                    ],
+                    "description": "Raw `k6 run --summary-export` document.",
+                    "properties": {
+                      "metrics": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                ]
+              },
+              "example": {
+                "service": "globlex-api",
+                "environment": "production",
+                "scenario": "smoke",
+                "thresholds": {
+                  "p95_ms": 450
+                },
+                "summary": {
+                  "metrics": {
+                    "http_req_duration": {
+                      "values": {
+                        "avg": 100,
+                        "p(95)": 200
+                      }
+                    },
+                    "http_reqs": {
+                      "values": {
+                        "count": 100,
+                        "rate": 10
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored run record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body over 2 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/synthetic-benchmark": {
+      "post": {
+        "operationId": "runSyntheticBenchmark",
+        "summary": "Run a small HTTP benchmark against a target and store it as a run",
+        "tags": [
+          "runs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkRequest"
+              },
+              "example": {
+                "targetUrl": "https://api.globlex.pro/health",
+                "iterations": 5,
+                "concurrency": 2
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Benchmark result and stored run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "targetUrl",
+                    "k6Summary",
+                    "runRecord"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "completed"
+                    },
+                    "targetUrl": {
+                      "type": "string"
+                    },
+                    "iterations": {
+                      "type": "integer"
+                    },
+                    "concurrency": {
+                      "type": "integer"
+                    },
+                    "k6Summary": {
+                      "type": "object",
+                      "required": [
+                        "metrics"
+                      ],
+                      "description": "Raw `k6 run --summary-export` document.",
+                      "properties": {
+                        "metrics": {
+                          "type": "object"
+                        }
+                      }
+                    },
+                    "runRecord": {
+                      "$ref": "#/components/schemas/RunRecord"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body over 2 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Benchmark failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "service": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "Thresholds": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "p95_ms": {
+            "type": "number"
+          },
+          "p99_ms": {
+            "type": "number"
+          },
+          "error_rate": {
+            "type": "number"
+          },
+          "min_rps": {
+            "type": "number"
+          }
+        }
+      },
+      "IngestRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "service": {
+            "type": "string",
+            "default": "globlex-api"
+          },
+          "environment": {
+            "type": "string",
+            "default": "production"
+          },
+          "scenario": {
+            "type": "string",
+            "default": "globlex-enterprise-slo"
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/Thresholds"
+          },
+          "summary": {
+            "type": "object",
+            "required": [
+              "metrics"
+            ],
+            "description": "Raw `k6 run --summary-export` document.",
+            "properties": {
+              "metrics": {
+                "type": "object"
+              }
+            }
+          },
+          "k6Summary": {
+            "type": "object",
+            "required": [
+              "metrics"
+            ],
+            "description": "Raw `k6 run --summary-export` document.",
+            "properties": {
+              "metrics": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "BenchmarkRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "targetUrl": {
+            "type": "string",
+            "format": "uri",
+            "default": "https://api.globlex.pro/health"
+          },
+          "iterations": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 5
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 250,
+            "default": 4000
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "service": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/Thresholds"
+          }
+        }
+      },
+      "RunRecord": {
+        "type": "object",
+        "required": [
+          "runId",
+          "timestamp",
+          "service",
+          "environment",
+          "scenario",
+          "badge",
+          "sloPassed",
+          "telemetry"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "service": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "badge": {
+            "type": "string"
+          },
+          "sloPassed": {
+            "type": "boolean"
+          },
+          "telemetry": {
+            "type": "object",
+            "properties": {
+              "p50": {
+                "type": "number"
+              },
+              "p90": {
+                "type": "number"
+              },
+              "p95": {
+                "type": "number"
+              },
+              "p99": {
+                "type": "number"
+              },
+              "avg": {
+                "type": "number"
+              },
+              "rps": {
+                "type": "number"
+              },
+              "error_rate": {
+                "type": "number"
+              },
+              "total_requests": {
+                "type": "number"
+              }
+            }
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "launchGateRequest": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
