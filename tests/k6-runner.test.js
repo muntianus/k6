@@ -7,7 +7,7 @@ import {
   executeSyntheticBenchmark,
   K6RunRegistry,
 } from '../src/run-engine.js';
-import { createServer } from '../src/server.js';
+import { createServer, parseAllowedHosts } from '../src/server.js';
 
 test('extractK6Telemetry: parses standard k6 --summary-export metrics', () => {
   const sampleSummary = {
@@ -123,7 +123,7 @@ test('src/server.js: HTTP API /health, /api/v1/runs/ingest, /api/v1/runs, and /a
   const mockTargetUrl = `http://127.0.0.1:${mockTarget.address().port}/health`;
 
   const registry = new K6RunRegistry();
-  const server = createServer({ registry });
+  const server = createServer({ registry, allowedHosts: ['127.0.0.1'] });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
@@ -214,4 +214,46 @@ test('SLO gate applies configured min_rps threshold', () => {
   });
   assert.equal(lowThroughput.badge, 'FAIL');
   assert.match(lowThroughput.violations.join(' '), /minimum 1/);
+});
+
+test('synthetic benchmark refuses targets outside the host allowlist (SSRF guard)', async () => {
+  let hits = 0;
+  const internal = http.createServer((req, res) => {
+    hits += 1;
+    res.end('secret');
+  });
+  await new Promise((resolve) => internal.listen(0, '127.0.0.1', resolve));
+  const server = createServer({ registry: new K6RunRegistry() });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const post = (body) =>
+    fetch(`http://127.0.0.1:${server.address().port}/api/v1/runs/synthetic-benchmark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  try {
+    for (const targetUrl of [
+      `http://127.0.0.1:${internal.address().port}/`,
+      'http://169.254.169.254/latest/meta-data/',
+      'http://localhost:8090/api/collections',
+      'https://evil.example/',
+    ]) {
+      const res = await post({ targetUrl, iterations: 1 });
+      assert.equal(res.status, 403, targetUrl);
+      assert.match((await res.json()).error, /not allowed/);
+    }
+    for (const targetUrl of ['file:///etc/passwd', 'not a url', 'gopher://api.globlex.pro/']) {
+      assert.equal((await post({ targetUrl })).status, 400, targetUrl);
+    }
+    assert.equal(hits, 0, 'no request may reach a refused target');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => internal.close(resolve));
+  }
+});
+
+test('parseAllowedHosts: env list overrides the default portfolio hosts', () => {
+  assert.ok(parseAllowedHosts('').includes('api.globlex.pro'));
+  assert.deepEqual(parseAllowedHosts(' Staging.Example.com , ,api.test '), ['staging.example.com', 'api.test']);
 });

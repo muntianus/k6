@@ -5,6 +5,13 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- `POST /api/v1/runs/synthetic-benchmark` no longer fetches arbitrary URLs: the target host
+  must be in `K6_BENCHMARK_ALLOWED_HOSTS` (default: public globlex.* / perfops.* hosts),
+  only http(s) is accepted (400 otherwise, 403 for other hosts), and redirects are not
+  followed. Previously any caller could make the service probe internal addresses.
+
 ### Changed
 
 - Adopted the muntianus Repository Standard v1: committed OpenAPI contract

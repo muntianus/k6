@@ -123,6 +123,8 @@ export async function executeSyntheticBenchmark(options = {}) {
       try {
         const res = await fetchFn(targetUrl, {
           method: options.method || 'GET',
+          // Never follow redirects: an allowed host must not bounce probes elsewhere.
+          redirect: 'manual',
           headers: {
             'User-Agent': 'perfops-k6-synthetic-runner/1.0.0',
             ...(options.headers || {}),
