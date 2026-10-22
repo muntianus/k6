@@ -254,7 +254,17 @@
             }
           },
           "400": {
-            "description": "Malformed JSON",
+            "description": "Malformed JSON or targetUrl is not an absolute http(s) URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "targetUrl host is not in the allowlist",
             "content": {
               "application/json": {
                 "schema": {
@@ -283,7 +293,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Only hosts in K6_BENCHMARK_ALLOWED_HOSTS (default: the portfolio's public globlex.* / perfops.* hosts) may be targeted; redirects are not followed."
       }
     }
   },
