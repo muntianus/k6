@@ -40,8 +40,8 @@ endpoint inventory reports a new expected contract.
 
 - **Contract:** [`docs/api/openapi.json`](docs/api/openapi.json) (OpenAPI 3.1).
   `tests/openapi-contract.test.js` fails when `ROUTES` in `src/server.js` and the spec disagree.
-- **Tests:** `npm test` — Node's built-in runner, no dependencies. CI runs it plus the
-  org security gate (gitleaks) on every pull request.
+- **Tests:** `npm test` — Node's built-in runner, no dependencies. CI runs it on every pull request;
+  GitGuardian scans each one for secrets.
 - **Config:** every environment variable is listed in [`.env.example`](.env.example).
 - **Deploy:** `docker build -t k6 . && docker run -p 4041:4041 k6` — `node:22-alpine`,
   non-root, `HEALTHCHECK` on `GET /health`. The portfolio port map lives in
