@@ -6,7 +6,8 @@ k6 is an internal PerfOps microservice (default port 4041).
   (GitHub → Security → Advisories) or contact the owner listed in
   [`muntianus/.github`](https://github.com/muntianus/.github/blob/main/SECURITY.md).
 - **Secrets:** none are required. Never commit `.env`; only `.env.example`
-  (placeholder values) is tracked. CI runs gitleaks via the org security gate.
+  (placeholder values) is tracked. GitGuardian scans every pull request for
+  secrets.
 - The API is unauthenticated. `POST /api/v1/runs/synthetic-benchmark` makes outbound
   HTTP requests, so it only accepts `targetUrl` hosts from `K6_BENCHMARK_ALLOWED_HOSTS`
   (default: the portfolio's public hosts), http(s) only, and never follows redirects.
