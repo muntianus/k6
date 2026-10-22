@@ -36,6 +36,17 @@ endpoint inventory reports a new expected contract.
 - `GET /api/v1/runs` — Lists historical k6 runs with SLO `PASS` / `FAIL` badges (supports `?service=` and `?badge=` filters).
 - `POST /api/v1/runs/synthetic-benchmark` — Executes a lightweight concurrent HTTP benchmark against a target URL (default `https://api.globlex.pro/health`), returns k6-compatible summary JSON, and registers the run.
 
+## API contract, CI & deploy
+
+- **Contract:** [`docs/api/openapi.json`](docs/api/openapi.json) (OpenAPI 3.1).
+  `tests/openapi-contract.test.js` fails when `ROUTES` in `src/server.js` and the spec disagree.
+- **Tests:** `npm test` — Node's built-in runner, no dependencies. CI runs it plus the
+  org security gate (gitleaks) on every pull request.
+- **Config:** every environment variable is listed in [`.env.example`](.env.example).
+- **Deploy:** `docker build -t k6 . && docker run -p 4041:4041 k6` — `node:22-alpine`,
+  non-root, `HEALTHCHECK` on `GET /health`. The portfolio port map lives in
+  [`muntianus/architecture`](https://github.com/muntianus/architecture).
+
 ## Contact / Support
 
 PerfOps official Telegram contact: [@perfops_ai_manager](https://t.me/perfops_ai_manager).
